@@ -9,13 +9,14 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>TinyML</RootNamespace>
     <AssemblyName>TinyML</AssemblyName>
-    <TargetFrameworkVersion>v4.7</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <UseStandardResourceNames>true</UseStandardResourceNames>
     <WarningsAsErrors>3239;$(WarningsAsErrors)</WarningsAsErrors>
     <Name>TinyML</Name>
     <NuGetPackageImportStamp>
     </NuGetPackageImportStamp>
+    <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -98,9 +99,6 @@
     <None Include="test.tml" />
   </ItemGroup>
   <ItemGroup>
-    <Reference Include="FSharp.Core">
-      <HintPath>packages\FSharp.Core.4.7.1\lib\net45\FSharp.Core.dll</HintPath>
-    </Reference>
     <Reference Include="FsLexYacc.Runtime">
       <HintPath>packages\FsLexYacc.Runtime.10.0.0\lib\net46\FsLexYacc.Runtime.dll</HintPath>
     </Reference>
