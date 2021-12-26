@@ -24,11 +24,12 @@ let unexpected_error fmt = throw_formatted UnexpectedError fmt
 
 type tyvar = int
 
+//Definition of type. 
 type ty =
-    | TyName of string
-    | TyArrow of ty * ty
-    | TyVar of tyvar
-    | TyTuple of ty list
+    | TyName of string //int, float, double, string, ...
+    | TyArrow of ty * ty // int -> int
+    | TyVar of tyvar //Instead of 'a, 'b, 'c, ... we use 1, 2, 3, ...
+    | TyTuple of ty list //A tuple of types
 
 // pseudo data constructors for literal types
 let TyFloat = TyName "float"
@@ -50,9 +51,9 @@ let (|TyString|_|) = (|TyLit|_|) "string"
 let (|TyBool|_|) = (|TyLit|_|) "bool"
 let (|TyUnit|_|) = (|TyLit|_|) "unit"
 
-
 type scheme = Forall of tyvar list * ty
 
+//Constant values (literals)
 type lit = LInt of int
          | LFloat of float
          | LString of string
@@ -60,18 +61,21 @@ type lit = LInt of int
          | LBool of bool
          | LUnit 
 
+
+//let binding, let [rec] x [: type] = expression
 type binding = bool * string * ty option * expr    // (is_recursive, id, optional_type_annotation, expression)
 
+//Expressions
 and expr = 
-    | Lit of lit
-    | Lambda of string * ty option * expr
-    | App of expr * expr
-    | Var of string
-    | LetIn of binding * expr
-    | IfThenElse of expr * expr * expr option
-    | Tuple of expr list
-    | BinOp of expr * string * expr
-    | UnOp of string * expr
+    | Lit of lit //Literal, just a value
+    | Lambda of string * ty option * expr //Lambda expressions fun x [: int] -> expression
+    | App of expr * expr //Function application: f x, both f and x can be results of expressions
+    | Var of string //A variable (just a string). 
+    | LetIn of binding * expr // The binding plus keywork "in" followed by an expression
+    | IfThenElse of expr * expr * expr option // if exp then exp [else exp]
+    | Tuple of expr list //(exp, exp [, exp ...])
+    | BinOp of expr * string * expr //expr (+, -, *, /) expr
+    | UnOp of string * expr //-expr
    
 let (|Let|_|) = function 
     | LetIn ((false, x, tyo, e1), e2) -> Some (x, tyo, e1, e2)
@@ -81,13 +85,15 @@ let (|LetRec|_|) = function
     | LetIn ((true, x, tyo, e1), e2) -> Some (x, tyo, e1, e2)
     | _ -> None
 
+//The environment is a collection of bindings, it's a list of couples( variable with a type)
 type 'a env = (string * 'a) list  
 
+//The result of an expression can be
 type value =
-    | VLit of lit
-    | VTuple of value list
-    | Closure of value env * string * expr
-    | RecClosure of value env * string * string * expr
+    | VLit of lit //Value
+    | VTuple of value list //Tuple
+    | Closure of value env * string * expr //Closure
+    | RecClosure of value env * string * string * expr //Recursive closure
 
 type interactive = IExpr of expr | IBinding of binding
 
@@ -107,6 +113,7 @@ let pretty_env p env = sprintf "[%s]" (flatten (fun (x, o) -> sprintf "%s=%s" x 
 // print any tuple given a printer p for its elements
 let pretty_tupled p l = flatten p ", " l
 
+//print the type of t
 let rec pretty_ty t =
     match t with
     | TyName s -> s
@@ -114,6 +121,7 @@ let rec pretty_ty t =
     | TyVar n -> sprintf "'%d" n
     | TyTuple ts -> sprintf "(%s)" (pretty_tupled pretty_ty ts)
 
+//Print the type of a literal
 let pretty_lit lit =
     match lit with
     | LInt n -> sprintf "%d" n
@@ -124,6 +132,7 @@ let pretty_lit lit =
     | LBool false -> "false"
     | LUnit -> "()"
 
+//Print the expression
 let rec pretty_expr e =
     match e with
     | Lit lit -> pretty_lit lit
@@ -163,6 +172,7 @@ let rec pretty_expr e =
     
     | _ -> unexpected_error "pretty_expr: %s" (pretty_expr e)
 
+//Print the value of v
 let rec pretty_value v =
     match v with
     | VLit lit -> pretty_lit lit

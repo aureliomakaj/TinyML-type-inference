@@ -67,8 +67,9 @@ let main_interactive () =
 let main argv =
     let r =
         try 
-            if argv.Length < 1 then main_interactive ()
-            else main_interpreter argv.[0]
+            main_interactive ()
+            //if argv.Length < 1 then main_interactive ()
+            //else main_interpreter argv.[0]
             0
         with e -> printfn "\nexception caught: %O" e; 1
     Console.ReadLine () |> ignore
