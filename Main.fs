@@ -42,7 +42,8 @@ let main_interpreter filename =
 
 let main_interactive () =
     printfn "entering interactive mode..."
-    let mutable tenv = []
+    //let mutable tenv = []
+    let mutable tenv = Typing.gamma0
     let mutable venv = []
     while true do
         trap <| fun () ->
@@ -68,8 +69,8 @@ let main argv =
     let r =
         try 
             main_interactive ()
-            //if argv.Length < 1 then main_interactive ()
-            //else main_interpreter argv.[0]
+            if argv.Length < 1 then main_interactive ()
+            else main_interpreter argv.[0]
             0
         with e -> printfn "\nexception caught: %O" e; 1
     Console.ReadLine () |> ignore

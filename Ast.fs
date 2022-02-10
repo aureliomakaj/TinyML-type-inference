@@ -77,6 +77,10 @@ and expr =
     | BinOp of expr * string * expr //expr (+, -, *, /) expr
     | UnOp of string * expr //-expr
    
+let fold_params parms e0 = 
+    List.foldBack (fun (id, tyo) e -> Lambda (id, tyo, e)) parms e0
+
+
 let (|Let|_|) = function 
     | LetIn ((false, x, tyo, e1), e2) -> Some (x, tyo, e1, e2)
     | _ -> None

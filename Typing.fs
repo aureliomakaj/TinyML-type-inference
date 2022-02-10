@@ -32,9 +32,24 @@ let freevars_scheme (Forall (tvs, t)) =
 
 // type inference
 //
+let gamma0 = [
+    ("+", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
+    ("-", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
+]
+
 
 let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
-    failwith "not implement"
+    match e with
+    
+    
+        | BinOp (e1, op, e2) ->
+            typeinfer_expr env (App (App (Var op, e1), e2))
+    
+        | UnOp (op, e) ->
+            typeinfer_expr env (App (Var op, e))
+    
+    
+        | _ -> failwith "not implemented"
 
 
 // type checker
@@ -65,7 +80,7 @@ let rec typecheck_expr (env : ty env) (e : expr) : ty =
         match t1 with
         | TyArrow (l, r) ->
             if l = t2 then r 
-            else type_error "wrong application: argument type %s does not match function domain %s" (pretty_ty t2) (pretty_ty l)
+            else type_error "wrong application: argums does not match function domainent type % %s" (pretty_ty t2) (pretty_ty l)
         | _ -> type_error "expecting a function on left side of application, but got %s" (pretty_ty t1)
 
     | Let (x, tyo, e1, e2) ->
