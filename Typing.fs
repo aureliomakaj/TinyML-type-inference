@@ -12,10 +12,17 @@ let type_error fmt = throw_formatted TypeError fmt
 type subst = (tyvar * ty) list
 
 // TODO implement this
-let unify (t1 : ty) (t2 : ty) : subst = []
+let rec apply_subst (t : ty) (s : subst) : ty = 
+    match t with
+    | TyName _ -> t
+    | TyVar t1 -> 
+        let elem = List.tryFind (fun (tyvar, ty) -> tyvar = t1) s
+        match elem with 
+        | None -> t
+        | Some (_, t2) -> t2
 
-// TODO implement this
-let apply_subst (t : ty) (s : subst) : ty = t
+    | TyArrow (td, tc) -> TyArrow((apply_subst td s), (apply_subst tc s))
+    | TyTuple tup -> TyTuple (List.map (fun t -> apply_subst t s) tup)
 
 // TODO implement this
 let compose_subst (s1 : subst) (s2 : subst) : subst = s1 @ s2
@@ -30,6 +37,30 @@ let rec freevars_ty (t : ty) : tyvar Set =
 let freevars_scheme (Forall (tvs, t)) =
     Set.difference (freevars_ty t) (Set.ofList tvs)
 
+// TODO implement this
+let rec unify (t1 : ty) (t2 : ty) : subst = 
+    match t1, t2 with
+    | TyName _, TyName _ ->
+        if t1 <> t2 
+            then type_error "unification_error: typed names %s and %s must be of the same type to be unified " (pretty_ty t1) (pretty_ty t2) 
+            else []
+    | TyVar t , _  -> 
+        let free_vars = freevars_ty t2
+        if Set.contains t free_vars 
+            then type_error "Unification error: recursion detected"
+            else [(t, t2)]
+
+    | _, TyVar t -> 
+        let free_vars = freevars_ty t1
+        if Set.contains t free_vars 
+            then type_error "Unification error: recursion detected"
+            else [(t, t1)]
+
+    | TyArrow (tt1, tt2) , TyArrow (tt3, tt4) -> compose_subst (unify tt1 tt3) ( unify tt2 tt4)
+    | _ -> type_error "Unification error: unsupported unification"
+
+
+
 // type inference
 //
 let gamma0 = [
@@ -37,19 +68,125 @@ let gamma0 = [
     ("-", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
 ]
 
+let next_tyvar (env : ty env) : ty = 
+    let res = List.ofSeq (List.fold (fun set (_, ty) -> Set.union set (freevars_ty ty)) Set.empty env)
+    TyVar (
+        match res with
+        | [] -> 1
+        | _ -> List.max(res) + 1
+    )
 
 let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
     match e with
+    | Lit (LInt _) -> (TyInt, [])
+    | Lit (LFloat _) -> (TyFloat, [])
+    | Lit (LString _) -> (TyString, [])
+    | Lit (LChar _) -> (TyChar, [])
+    | Lit (LBool _) -> (TyBool, [])
+    | Lit LUnit -> (TyUnit, [])
     
+    | Var x ->
+        try
+            let _, t = List.find (fun (y, _) -> x = y) env
+            (t, [])
+        with
+        | :? System.Collections.Generic.KeyNotFoundException -> type_error "Unknown identifier '%s'" x
+
+    | Lambda (x, None, e) -> 
+        let t1 = next_tyvar env
+        let t2, s = typeinfer_expr ((x, t1) :: env) e
+        (TyArrow (apply_subst t1 s, t2), s)
     
-        | BinOp (e1, op, e2) ->
-            typeinfer_expr env (App (App (Var op, e1), e2))
+    | Lambda (x, Some t1, e) -> 
+        let t2, subst = typeinfer_expr ((x, t1) :: env) e
+        (TyArrow (t1, t2), subst)
     
-        | UnOp (op, e) ->
-            typeinfer_expr env (App (Var op, e))
+    | App (e1, e2) -> 
+        let t1, s1= typeinfer_expr env e1
+        match t1 with 
+        | TyArrow (l, r) -> 
+            let t2, s2 = typeinfer_expr env e2
+            let composed_subst = (
+                try
+                    compose_subst (compose_subst s1 s2) (unify l t2)
+                with
+                | TypeError _ -> type_error "the domain of the function is %s, but got %s" (pretty_ty l) (pretty_ty t2)
+            )
+            (apply_subst r composed_subst, composed_subst)
+        | _ -> type_error "expecting a function on left side of application, but got %s" (pretty_ty t1)
     
+    | Let (x, None, e1, e2) -> 
+        let t1, s = typeinfer_expr env e1
+        let t2, s2 = typeinfer_expr ((x, t1)::env) e2
+        ((apply_subst t2 s2), compose_subst s s2)
+
+    //| Let (x, Some t, e1, e2) -> 
+    //    let v1 = eval_expr env e1
+    //    eval_expr ((x, v1) :: env) e2
+    //| App (e1, e2) ->
+    //    let t1, s1= typeinfer_expr env e1
+    //    let t2, s2 = typeinfer_expr env e2
+    //    match t1 with
+    //    | TyArrow (l, r) ->
+    //        if l = t2 then r 
+    //        else type_error "wrong application: argums does not match function domainent type % %s" (pretty_ty t2) (pretty_ty l)
+    //    | _ -> type_error "expecting a function on left side of application, but got %s" (pretty_ty t1)
     
-        | _ -> failwith "not implemented"
+    | BinOp (e1, ("+" | "-" | "/" | "%" | "*"  as op), e2) ->
+        let t1, s1 = typeinfer_expr env e1
+        let t2, s2 = typeinfer_expr env e2
+        let composed_subst = (
+            try
+                compose_subst (compose_subst s1 s2) (unify t1 t2)
+            with
+            | TypeError _ -> type_error "binary operator expects operands with same type name, but got %s %s %s" (pretty_ty t1) op (pretty_ty t2)
+        )
+        match t1, t2 with
+        | TyInt, TyInt
+        | TyInt, TyVar _
+        | TyVar _, TyInt -> (TyInt, composed_subst)
+        | TyVar _, TyVar _ ->
+            let compose = compose_subst (unify t1 TyInt) (unify t2 TyInt)
+            (TyInt, compose_subst composed_subst compose)
+        | TyFloat, TyFloat
+        | TyFloat, TyVar _
+        | TyVar _, TyFloat -> (TyFloat, composed_subst)
+        | _ -> type_error "Unsupported types for binary operation. Expected int or float, got %s and %s" (pretty_ty t1) (pretty_ty t2)
+
+    | BinOp (e1, ( "<" | "<=" | ">" | ">=" | "=" | "<>" as op), e2) ->
+        let t1, s1 = typeinfer_expr env e1
+        let t2, s2 = typeinfer_expr env e2
+        let composed_subst = (
+            try
+                compose_subst (compose_subst s1 s2) (unify t1 t2)
+            with
+            | TypeError _ -> type_error "binary operator expects two bools operands, but got %s %s %s" (pretty_ty t1) op (pretty_ty t2)
+        )
+        match t1, t2 with
+        | TyInt, TyInt
+        | TyInt, TyVar _
+        | TyVar _, TyInt
+        | TyFloat, TyFloat
+        | TyFloat, TyVar _
+        | TyVar _, TyFloat -> (TyBool, composed_subst)
+        | _ -> type_error "Unsupported types for binary operation. Expected int or float, got %s and %s" (pretty_ty t1) (pretty_ty t2)
+
+    | BinOp (e1, ("and" | "or" as op), e2) ->
+        let t1, s1 = typeinfer_expr env e1
+        let t2, s2 = typeinfer_expr env e2
+        let composed_subst = (
+            try
+                compose_subst (compose_subst s1 s2) (unify t1 t2)
+            with
+            | TypeError _ -> type_error "binary operator expects two bools operands, but got %s %s %s" (pretty_ty t1) op (pretty_ty t2)
+        )
+        match t1, t2 with
+        | TyBool, TyBool 
+        | TyBool, TyVar _
+        | TyVar _, TyBool -> (TyBool, composed_subst)
+        | _ -> type_error "binary operator expects two bools operands, but got %s %s %s" (pretty_ty t1) op (pretty_ty t2)   
+    
+    | _ -> failwith "not implemented"
 
 
 // type checker

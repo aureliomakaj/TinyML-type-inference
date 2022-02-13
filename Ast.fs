@@ -75,7 +75,7 @@ and expr =
     | IfThenElse of expr * expr * expr option // if exp then exp [else exp]
     | Tuple of expr list //(exp, exp [, exp ...])
     | BinOp of expr * string * expr //expr (+, -, *, /) expr
-    | UnOp of string * expr //-expr
+    | UnOp of string * expr // expr
    
 let fold_params parms e0 = 
     List.foldBack (fun (id, tyo) e -> Lambda (id, tyo, e)) parms e0

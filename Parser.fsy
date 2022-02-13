@@ -100,10 +100,15 @@ expr_tuple_atom:
   | MINUS expr_tuple_atom %prec UMINUS  		            { UnOp ("-", $2) }
 
   | expr_tuple_atom PLUS expr_tuple_atom					{ BinOp ($1, "+", $3) }
+  | BRA PLUS KET expr_tuple_atom expr_tuple_atom			{ BinOp ($4, "+", $5) }
   | expr_tuple_atom MINUS expr_tuple_atom					{ BinOp ($1, "-", $3) }
+  | BRA MINUS KET expr_tuple_atom expr_tuple_atom			{ BinOp ($4, "-", $5) }
   | expr_tuple_atom STAR expr_tuple_atom					{ BinOp ($1, "*", $3) }
+  | BRA STAR KET expr_tuple_atom expr_tuple_atom			{ BinOp ($4, "*", $5) }
   | expr_tuple_atom SLASH expr_tuple_atom					{ BinOp ($1, "/", $3) }
+  | BRA SLASH KET expr_tuple_atom expr_tuple_atom			{ BinOp ($4, "/", $5) }
   | expr_tuple_atom PERCENT expr_tuple_atom				    { BinOp ($1, "%", $3) }
+  | BRA PERCENT KET expr_tuple_atom expr_tuple_atom			{ BinOp ($4, "%", $5) }
 
   | expr_tuple_atom EQ expr_tuple_atom						{ BinOp ($1, "=", $3) }
   | expr_tuple_atom NEQ expr_tuple_atom						{ BinOp ($1, "<>", $3) }
