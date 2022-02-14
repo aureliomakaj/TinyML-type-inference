@@ -9,6 +9,7 @@ Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug Interactive|Any CPU = Debug Interactive|Any CPU
 		Debug|Any CPU = Debug|Any CPU
+		Proj|Any CPU = Proj|Any CPU
 		Release Interactive|Any CPU = Release Interactive|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
@@ -17,6 +18,8 @@ Global
 		{2BD7C40F-1BA7-4282-864F-C3B685A22538}.Debug Interactive|Any CPU.Build.0 = Debug|Any CPU
 		{2BD7C40F-1BA7-4282-864F-C3B685A22538}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{2BD7C40F-1BA7-4282-864F-C3B685A22538}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2BD7C40F-1BA7-4282-864F-C3B685A22538}.Proj|Any CPU.ActiveCfg = Proj|Any CPU
+		{2BD7C40F-1BA7-4282-864F-C3B685A22538}.Proj|Any CPU.Build.0 = Proj|Any CPU
 		{2BD7C40F-1BA7-4282-864F-C3B685A22538}.Release Interactive|Any CPU.ActiveCfg = Debug Interactive|Any CPU
 		{2BD7C40F-1BA7-4282-864F-C3B685A22538}.Release Interactive|Any CPU.Build.0 = Debug Interactive|Any CPU
 		{2BD7C40F-1BA7-4282-864F-C3B685A22538}.Release|Any CPU.ActiveCfg = Release|Any CPU

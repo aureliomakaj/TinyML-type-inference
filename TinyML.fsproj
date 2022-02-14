@@ -64,6 +64,8 @@
     <OutputPath>bin\Debug Interactive\</OutputPath>
     <StartArguments />
     <StartWorkingDirectory>..\..</StartWorkingDirectory>
+    <RemoteDebugEnabled>false</RemoteDebugEnabled>
+    <StartAction>Project</StartAction>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release Interactive|AnyCPU' ">
     <DebugType>pdbonly</DebugType>

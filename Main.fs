@@ -69,7 +69,6 @@ let main_interactive () =
 let main argv =
     let r =
         try 
-            main_interactive ()
             if argv.Length < 1 then main_interactive ()
             else main_interpreter argv.[0]
             0

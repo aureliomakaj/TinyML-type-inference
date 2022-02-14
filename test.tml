@@ -5,5 +5,17 @@
 
 // line comment
 
-let f = fun x -> (x+1, x+2)
+// let lit = 5 in lit
+// let closure_none = fun x -> x + 1 in closure_none
+// let closure_some = fun (x:int) -> x and true in closure_some
+
+let closure_tuple = fun x -> (x + 1, x, x) in closure_tuple
+//let closure_tuple = fun x -> (x + 1, x and true, x + 2.0) in closure_tuple
+
+//let a = fun x -> if (x + 1) > 2 then x + 2.0 else x + 3.0 in a
+
+//let rec a : int -> int = fun (x:int) -> if x = 0 then 0 else a (x - 1) in a 8
+
+
+
 

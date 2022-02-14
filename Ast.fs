@@ -68,10 +68,10 @@ type binding = bool * string * ty option * expr    // (is_recursive, id, optiona
 //Expressions
 and expr = 
     | Lit of lit //Literal, just a value
-    | Lambda of string * ty option * expr //Lambda expressions fun x [: int] -> expression
-    | App of expr * expr //Function application: f x, both f and x can be results of expressions
     | Var of string //A variable (just a string). 
+    | Lambda of string * ty option * expr //Lambda expressions fun x [: int] -> expression
     | LetIn of binding * expr // The binding plus keywork "in" followed by an expression
+    | App of expr * expr //Function application: f x, both f and x can be results of expressions
     | IfThenElse of expr * expr * expr option // if exp then exp [else exp]
     | Tuple of expr list //(exp, exp [, exp ...])
     | BinOp of expr * string * expr //expr (+, -, *, /) expr
