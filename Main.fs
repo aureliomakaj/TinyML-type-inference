@@ -58,8 +58,8 @@ let main_interactive () =
                 | IBinding (_, x, _, _ as b) ->
                     let t, v = interpret_expr tenv venv (LetIn (b, Var x)) // TRICK: put the variable itself as body after the in
                     // update global environments
-                    tenv <- (x, t) :: (List.filter (fun (var, ty) -> var <> x) tenv)
-                    venv <- (x, v) :: (List.filter (fun (var, value) -> var <> x) venv)
+                    tenv <- (x, t) :: tenv
+                    venv <- (x, v) :: venv
                     x, (t, v)
 
             printfn "val %s : %s = %s" x (pretty_ty t) (pretty_value v)
@@ -69,6 +69,7 @@ let main_interactive () =
 let main argv =
     let r =
         try 
+            main_interactive ()
             if argv.Length < 1 then main_interactive ()
             else main_interpreter argv.[0]
             0

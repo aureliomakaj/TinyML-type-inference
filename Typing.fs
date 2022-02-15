@@ -38,7 +38,10 @@ let compose_subst (s1 : subst) (s2 : subst) : subst =
         | Some (_, new_ty) ->
             match ty, new_ty with 
             | TyVar tt1, _ -> false
-            | TyName tt1, _ -> type_error "Type '%s' does not match '%s'" (pretty_ty ty) (pretty_ty new_ty)
+            | TyName tt1, _ -> 
+                if ty <> new_ty 
+                    then (type_error "Type '%s' does not match '%s'" (pretty_ty ty) (pretty_ty new_ty)) 
+                    else false
             | _ -> true
 
     (List.filter filter s1) @ s2
@@ -85,13 +88,11 @@ let gamma0 = [
     ("-", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
 ]
 
-let next_tyvar (env : ty env) : ty = 
+let next_tyvar (env : ty env) = 
     let res = List.ofSeq (List.fold (fun set (_, ty) -> Set.union set (freevars_ty ty)) Set.empty env)
-    TyVar (
-        match res with
-        | [] -> 1
-        | _ -> List.max(res) + 1
-    )
+    match res with
+    | [] -> 1
+    | _ -> List.max(res) + 1
 
 let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
     match e with
@@ -110,7 +111,7 @@ let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
         | :? System.Collections.Generic.KeyNotFoundException -> type_error "Unknown identifier '%s'" x
 
     | Lambda (x, None, e) -> 
-        let t1 = next_tyvar env
+        let t1 = TyVar (next_tyvar env) //new fresh type variable
         let t2, s = typeinfer_expr ((x, t1) :: env) e
         (TyArrow (apply_subst t1 s, t2), s)
     
@@ -123,16 +124,28 @@ let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
         match t1 with 
         | TyArrow (l, r) -> 
             let t2, s2 = typeinfer_expr env e2
+            //the possibile substitutions found from the two expressions
             let composed_subst = (
                 try
+                    //Unify the domain with the type of the expression
                     compose_subst (compose_subst s1 s2) (unify l t2)
                 with
                 | TypeError _ -> type_error "the domain of the function is %s, but got %s" (pretty_ty l) (pretty_ty t2)
             )
             (apply_subst r composed_subst, composed_subst)
-        | TyVar ->  
-            let composed = compose_subst s1 (unify t1 (TyArrow ((next_tyvar env) (next_tyvar env)))) 
+        //If t1 is unknown, we suppose that has type 'a -> 'b, and try to understand more about 'a and 'b from expression e2
+        | TyVar _ ->
             let t2, s2 = typeinfer_expr env e2
+            let free_vars = freevars_ty t2
+            let n = (Set.maxElement free_vars) + 1
+            let domain = TyVar n //fresh type variable
+            let codomain = TyVar (n + 1) //fresh type variable
+            let composed = compose_subst s1 s2 //compose substitutions from the expressions
+            let composed1 = compose_subst composed (unify domain t2) //Unify the domain with the type of e2
+            let new_dom = apply_subst domain composed1 // apply the substitution
+            let arr = TyArrow (new_dom, codomain)
+            let composed2 = compose_subst composed1 (unify t1 arr)
+            (apply_subst codomain composed2, composed2)
             
         | _ -> type_error "expecting a function on left side of application, but got %s" (pretty_ty t1)
     
@@ -147,13 +160,33 @@ let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
         if t1 <> t then type_error "Expected type for '%s' is %s, got %s" x (pretty_ty t) (pretty_ty t1) 
         let t2, s2 = typeinfer_expr env0 e2
         (t2, compose_subst s s2)
+
+    | LetRec (f, None, e1, e2) ->
+        let n = next_tyvar env
+        let arr = TyArrow (TyVar n, TyVar (n + 1))
+        let env0 = (f, arr) :: env
+        let t1, s = typeinfer_expr env0 e1
+        let composed = compose_subst s (unify arr t1)
+        let new_type = apply_subst arr composed
+        let t2, s2 = typeinfer_expr ((f, new_type)::env) e2
+        (t2, compose_subst s s2)
+
+    | LetRec (f, Some tf, e1, e2) ->
+        let env0 = (f, tf) :: env
+        let t1, s1 = typeinfer_expr env0 e1
+        match t1 with
+        | TyArrow _ -> ()
+        | _ -> type_error "let rec is restricted to functions, but got type %s" (pretty_ty t1)
+        if t1 <> tf then type_error "let rec type mismatch: expected %s, but got %s" (pretty_ty tf) (pretty_ty t1)
+        let t2, s2 = typeinfer_expr env0 e2
+        (t2, compose_subst s1 s2)
     
     | Tuple tup ->
         let mapAndFold acc elem = 
             let t, s = typeinfer_expr env elem
             (t, compose_subst acc s)
 
-        let a, b = List.mapFold (mapAndFold) [] tup
+        let a, b = List.mapFold mapAndFold [] tup
         (apply_subst (TyTuple a) b, b)
 
 
@@ -168,8 +201,9 @@ let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
             (TyUnit, composed)
         | Some e3 ->
             let t3, s3 = typeinfer_expr env e3
-            if t2 <> t3 then type_error "type mismatch in if-then-else: then branch has type %s and is different from else branch type %s" (pretty_ty t2) (pretty_ty t3)
-            (t2, compose_subst composed s3)
+            let com = compose_subst composed s3
+            //if t2 <> t3 then type_error "type mismatch in if-then-else: then branch has type %s and is different from else branch type %s" (pretty_ty t2) (pretty_ty t3)
+            (t2, compose_subst com (unify t2 t3))
 
     | BinOp (e1, ("+" | "-" | "/" | "%" | "*"  as op), e2) ->
         let t1, s1 = typeinfer_expr env e1
