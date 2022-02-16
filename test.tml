@@ -24,3 +24,4 @@
 
 //let rec a = fun x -> if x <= 0 then 0 else a (x - 1) in a 8;;
 
+//fun x -> if true then (x, x, x) else (2, 2, 2);;

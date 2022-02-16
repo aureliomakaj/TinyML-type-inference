@@ -41,6 +41,9 @@ let main_interpreter filename =
         let t, v = interpret_expr [] [] prg
         printfn "type:\t%s\nvalue:\t%s" (pretty_ty t) (pretty_value v)
 
+let replace_var var elem env =
+    (var, elem) :: (List.filter (fun (x, _) -> x <> var ) env )
+
 let main_interactive () =
     printfn "entering interactive mode..."
     //let mutable tenv = Typing.gamma0
@@ -58,8 +61,10 @@ let main_interactive () =
                 | IBinding (_, x, _, _ as b) ->
                     let t, v = interpret_expr tenv venv (LetIn (b, Var x)) // TRICK: put the variable itself as body after the in
                     // update global environments
-                    tenv <- (x, t) :: tenv
-                    venv <- (x, v) :: venv
+                    //tenv <- (x, t) :: tenv
+                    //venv <- (x, v) :: venv
+                    tenv <- replace_var x t tenv
+                    venv <- replace_var x v venv
                     x, (t, v)
 
             printfn "val %s : %s = %s" x (pretty_ty t) (pretty_value v)

@@ -77,6 +77,18 @@ let rec unify (t1 : ty) (t2 : ty) : subst =
             else [(t, t1)]
 
     | TyArrow (tt1, tt2) , TyArrow (tt3, tt4) -> compose_subst (unify tt1 tt3) ( unify tt2 tt4)
+    | TyTuple tup1, TyTuple tup2 ->
+        if tup1.Length <> tup2.Length 
+            then type_error "Unification error: unification of tuples with different lengths. Got %d and %d" tup1.Length tup2.Length
+
+        let rec check_tuples l1 l2 = 
+            match l1, l2 with 
+            | [], [] -> []
+            | x::xs, y::ys -> (unify x y) @ (check_tuples xs ys)
+            | _ -> []
+
+        check_tuples tup1 tup2
+        
     | _ -> type_error "Unification error: unsupported unification"
 
 
@@ -88,7 +100,7 @@ let gamma0 = [
     ("-", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
 ]
 
-let next_tyvar (env : ty env) = 
+let next_tyvar env = 
     let res = List.ofSeq (List.fold (fun set (_, ty) -> Set.union set (freevars_ty ty)) Set.empty env)
     match res with
     | [] -> 1
@@ -134,17 +146,15 @@ let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
             )
             (apply_subst r composed_subst, composed_subst)
         //If t1 is unknown, we suppose that has type 'a -> 'b, and try to understand more about 'a and 'b from expression e2
-        | TyVar _ ->
+        | TyVar tt1 ->
             let t2, s2 = typeinfer_expr env e2
-            let free_vars = freevars_ty t2
-            let n = (Set.maxElement free_vars) + 1
-            let domain = TyVar n //fresh type variable
-            let codomain = TyVar (n + 1) //fresh type variable
+            let free_vars = Set.union (freevars_ty t2) (Set.singleton tt1)
+            let n = if Set.count free_vars > 0 then (Set.maxElement free_vars) + 1 else 1
+            let n1 = max (next_tyvar env) n
+            let codomain = TyVar n1 //fresh type variable
             let composed = compose_subst s1 s2 //compose substitutions from the expressions
-            let composed1 = compose_subst composed (unify domain t2) //Unify the domain with the type of e2
-            let new_dom = apply_subst domain composed1 // apply the substitution
-            let arr = TyArrow (new_dom, codomain)
-            let composed2 = compose_subst composed1 (unify t1 arr)
+            let arr = TyArrow (t2, codomain)
+            let composed2 = compose_subst composed (unify t1 arr)
             (apply_subst codomain composed2, composed2)
             
         | _ -> type_error "expecting a function on left side of application, but got %s" (pretty_ty t1)

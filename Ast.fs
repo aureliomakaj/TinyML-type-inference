@@ -53,6 +53,10 @@ let (|TyUnit|_|) = (|TyLit|_|) "unit"
 
 type scheme = Forall of tyvar list * ty
 
+type polyty = 
+    | MTy of ty 
+    | QTy of scheme
+
 //Constant values (literals)
 type lit = LInt of int
          | LFloat of float
