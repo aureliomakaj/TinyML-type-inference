@@ -28,42 +28,40 @@ let rec apply_subst (t : ty) (s : subst) : ty =
     //For tuples, apply the substitution on each element of the tuple
     | TyTuple tup -> TyTuple (List.map (fun t -> apply_subst t s) tup)
 
-//Composition of two substitutions list
-let compose_subst (s1 : subst) (s2 : subst) : subst = 
-    //s2 is the list of new substitutions, obtained from new considerations
-    let filter (tyvar, ty) =
-        let elem = List.tryFind (fun (tyvar1, _) -> tyvar1 = tyvar) s2
-        match elem with 
-        | None -> true
-        | Some (_, new_ty) ->
-            match ty, new_ty with 
-            | TyVar tt1, _ -> false
-            | TyName tt1, _ -> 
-                if ty <> new_ty 
-                    then (type_error "Type '%s' does not match '%s'" (pretty_ty ty) (pretty_ty new_ty)) 
-                    else false
-            | _ -> true
+    | TyQuant (Forall (l, tt)) -> apply_subst tt s 
 
-    (List.filter filter s1) @ s2
-
+(*let rec mapFilter f l =
+    match l with 
+    | [] -> []
+    | x :: xs -> 
+        let mapped = f x
+        match mapped with
+        | None -> [] @ mapFilter f xs
+        | Some _ -> x :: (mapFilter f xs)
+*)
 
 let rec freevars_ty (t : ty) : tyvar Set =
     match t with
     | TyName _ -> Set.empty
     | TyArrow (t1, t2) -> Set.union (freevars_ty t1) (freevars_ty t2)
     | TyVar tv -> Set.singleton tv
-    | TyTuple ts -> List.fold (fun set t -> Set.union set (freevars_ty t)) Set.empty ts 
+    | TyTuple ts -> List.fold (fun set t -> Set.union set (freevars_ty t)) Set.empty ts
+    | TyQuant (Forall (l, t)) -> Set.ofList l
 
 let freevars_scheme (Forall (tvs, t)) =
     Set.difference (freevars_ty t) (Set.ofList tvs)
 
+
 //Unification function (Martelli-Montanari)
 let rec unify (t1 : ty) (t2 : ty) : subst = 
     match t1, t2 with
+
     | TyName _, TyName _ ->
         if t1 <> t2 
             then type_error "unification_error: typed names %s and %s must be of the same type to be unified " (pretty_ty t1) (pretty_ty t2) 
             else []
+    | TyVar _, TyVar _ -> []
+
     | TyVar t , _  -> 
         let free_vars = freevars_ty t2
         if Set.contains t free_vars 
@@ -77,6 +75,7 @@ let rec unify (t1 : ty) (t2 : ty) : subst =
             else [(t, t1)]
 
     | TyArrow (tt1, tt2) , TyArrow (tt3, tt4) -> compose_subst (unify tt1 tt3) ( unify tt2 tt4)
+
     | TyTuple tup1, TyTuple tup2 ->
         if tup1.Length <> tup2.Length 
             then type_error "Unification error: unification of tuples with different lengths. Got %d and %d" tup1.Length tup2.Length
@@ -88,18 +87,40 @@ let rec unify (t1 : ty) (t2 : ty) : subst =
             | _ -> []
 
         check_tuples tup1 tup2
-        
+
+    | TyQuant (Forall (l, t)), _ -> 
+        unify t t2  
     | _ -> type_error "Unification error: unsupported unification"
 
+(*
+Composition of two substitutions: 
+we start to iterate the first list and check if the element is also in the second:
+- if there is, we try to unify the two types. 
+    - if there is a substitution we use it and discard the other two
+    - if not, use the first and discard the other.
+- if there isn't, save it and continue with the iteration
+*)
+and compose_subst (s1 : subst) (s2 : subst) : subst = 
+    let rec f acc (l1, l2) = 
+        acc @ 
+            match l1 with 
+            | [] -> l2
+            | (tyvar, ty) :: xs ->   
+                let elem = List.tryFind (fun (x0, _) -> tyvar = x0) l2
+                match elem with 
+                | None -> (tyvar, ty) :: (f acc (xs, l2))
+                | Some (_, new_ty) -> 
+                    let subs = unify ty new_ty
+                    //Remove the element already checked from the second list
+                    let filtered = List.filter (fun (a, b) -> a <> tyvar && b <> new_ty) l2
+                    if List.isEmpty subs
+                        then (tyvar, ty) :: filtered
+                        else subs @ filtered
+        
+                
+    f [] (s1, s2)
 
-
-// type inference
-//
-let gamma0 = [
-    ("+", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
-    ("-", TyArrow (TyInt, TyArrow (TyInt, TyInt)))
-]
-
+//Generate an unused integer to be used of a fresh type variable
 let next_tyvar env = 
     let res = List.ofSeq (List.fold (fun set (_, ty) -> Set.union set (freevars_ty ty)) Set.empty env)
     match res with
@@ -108,6 +129,7 @@ let next_tyvar env =
 
 let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
     match e with
+    //Literals are already type names
     | Lit (LInt _) -> (TyInt, [])
     | Lit (LFloat _) -> (TyFloat, [])
     | Lit (LString _) -> (TyString, [])
@@ -115,6 +137,7 @@ let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
     | Lit (LBool _) -> (TyBool, [])
     | Lit LUnit -> (TyUnit, [])
     
+    //For variables, just look if the variable is in the environment
     | Var x ->
         try
             let _, t = List.find (fun (y, _) -> x = y) env
@@ -134,6 +157,7 @@ let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
     | App (e1, e2) -> 
         let t1, s1= typeinfer_expr env e1
         match t1 with 
+
         | TyArrow (l, r) -> 
             let t2, s2 = typeinfer_expr env e2
             //the possibile substitutions found from the two expressions
@@ -145,23 +169,41 @@ let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
                 | TypeError _ -> type_error "the domain of the function is %s, but got %s" (pretty_ty l) (pretty_ty t2)
             )
             (apply_subst r composed_subst, composed_subst)
+
         //If t1 is unknown, we suppose that has type 'a -> 'b, and try to understand more about 'a and 'b from expression e2
-        | TyVar tt1 ->
+        | TyVar _ ->
             let t2, s2 = typeinfer_expr env e2
-            let free_vars = Set.union (freevars_ty t2) (Set.singleton tt1)
-            let n = if Set.count free_vars > 0 then (Set.maxElement free_vars) + 1 else 1
-            let n1 = max (next_tyvar env) n
-            let codomain = TyVar n1 //fresh type variable
+            let n = next_tyvar env
+            let codomain = TyVar n //fresh type variable
             let composed = compose_subst s1 s2 //compose substitutions from the expressions
             let arr = TyArrow (t2, codomain)
             let composed2 = compose_subst composed (unify t1 arr)
             (apply_subst codomain composed2, composed2)
-            
+
+        //If we have a quantification, we don't have to substitute, because the type variables are generalized.
+        //Just check if the domain with the result of the second expression are unifiable
+        | TyQuant (Forall (l, ty)) -> 
+            match ty with 
+            | TyArrow (dom, cod) -> 
+                let t2, s2 = typeinfer_expr env e2
+                (
+                    try
+                        unify dom t2
+                    with
+                    | TypeError _ -> type_error "the domain of the function is %s, but got %s" (pretty_ty dom) (pretty_ty t2)
+                ) |> ignore
+
+                (t2, compose_subst s1 s2)
+            | _ -> type_error "expecting a function on left side of application, but got %s" (pretty_ty ty)
+
         | _ -> type_error "expecting a function on left side of application, but got %s" (pretty_ty t1)
     
+    //let-polymorphism. 
     | Let (x, None, e1, e2) -> 
         let t1, s = typeinfer_expr env e1
-        let t2, s2 = typeinfer_expr ((x, t1)::env) e2
+        let free_vars = freevars_ty t1
+        let x_ty = TyQuant (Forall (List.ofSeq free_vars, t1))
+        let t2, s2 = typeinfer_expr ((x, x_ty)::env) e2
         ((apply_subst t2 s2), compose_subst s s2)
 
     | Let (x, Some t, e1, e2) ->
@@ -174,10 +216,12 @@ let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
     | LetRec (f, None, e1, e2) ->
         let n = next_tyvar env
         let arr = TyArrow (TyVar n, TyVar (n + 1))
-        let env0 = (f, arr) :: env
+        let free_vars = freevars_ty arr
+        let new_ty = (TyQuant (Forall (List.ofSeq free_vars, arr)))
+        let env0 = (f, new_ty) :: env
         let t1, s = typeinfer_expr env0 e1
-        let composed = compose_subst s (unify arr t1)
-        let new_type = apply_subst arr composed
+        let composed = compose_subst s (unify new_ty t1)
+        let new_type = apply_subst new_ty composed
         let t2, s2 = typeinfer_expr ((f, new_type)::env) e2
         (t2, compose_subst s s2)
 
@@ -191,13 +235,18 @@ let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
         let t2, s2 = typeinfer_expr env0 e2
         (t2, compose_subst s1 s2)
     
+    //For tuples, we must iterate through all the expressions in the tuple, collect
+    //the substitutions and use it to check if the following expressions are respecting the 
+    //previous ones
     | Tuple tup ->
+        //Function for the mapFold
         let mapAndFold acc elem = 
             let t, s = typeinfer_expr env elem
             (t, compose_subst acc s)
 
-        let a, b = List.mapFold mapAndFold [] tup
-        (apply_subst (TyTuple a) b, b)
+        let expressions, composed_subst = List.mapFold mapAndFold [] tup
+
+        (apply_subst (TyTuple expressions) composed_subst, composed_subst)
 
 
     | IfThenElse (e1, e2, e3o) ->

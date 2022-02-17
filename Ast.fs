@@ -30,6 +30,8 @@ type ty =
     | TyArrow of ty * ty // int -> int
     | TyVar of tyvar //Instead of 'a, 'b, 'c, ... we use 1, 2, 3, ...
     | TyTuple of ty list //A tuple of types
+    | TyQuant of scheme
+and scheme = Forall of tyvar list * ty
 
 // pseudo data constructors for literal types
 let TyFloat = TyName "float"
@@ -51,11 +53,9 @@ let (|TyString|_|) = (|TyLit|_|) "string"
 let (|TyBool|_|) = (|TyLit|_|) "bool"
 let (|TyUnit|_|) = (|TyLit|_|) "unit"
 
-type scheme = Forall of tyvar list * ty
-
-type polyty = 
-    | MTy of ty 
-    | QTy of scheme
+//type polyty = 
+//    | MTy of ty //Monotype
+//    | QTy of tyvar list * ty //Polytype (quantification)
 
 //Constant values (literals)
 type lit = LInt of int
@@ -128,6 +128,7 @@ let rec pretty_ty t =
     | TyArrow (t1, t2) -> sprintf "(%s -> %s)" (pretty_ty t1) (pretty_ty t2)
     | TyVar n -> sprintf "'%d" n
     | TyTuple ts -> sprintf "(%s)" (pretty_tupled pretty_ty ts)
+    | TyQuant (Forall (l, ty)) -> pretty_ty ty
 
 //Print the type of a literal
 let pretty_lit lit =
