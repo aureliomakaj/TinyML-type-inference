@@ -11,6 +11,18 @@ let type_error fmt = throw_formatted TypeError fmt
 
 type subst = (tyvar * ty) list
 
+
+let rec freevars_ty (t : ty) : tyvar Set =
+    match t with
+    | TyName _ -> Set.empty
+    | TyArrow (t1, t2) -> Set.union (freevars_ty t1) (freevars_ty t2)
+    | TyVar tv -> Set.singleton tv
+    | TyTuple ts -> List.fold (fun set t -> Set.union set (freevars_ty t)) Set.empty ts
+    | TyQuant (Forall (l, t)) -> Set.ofList l
+
+let freevars_scheme (Forall (tvs, t)) =
+    Set.difference (freevars_ty t) (Set.ofList tvs)
+
 //Given a type and a list of subsitutions, returns the type substituted.
 let rec apply_subst (t : ty) (s : subst) : ty = 
     match t with
@@ -28,7 +40,9 @@ let rec apply_subst (t : ty) (s : subst) : ty =
     //For tuples, apply the substitution on each element of the tuple
     | TyTuple tup -> TyTuple (List.map (fun t -> apply_subst t s) tup)
 
-    | TyQuant (Forall (l, tt)) -> apply_subst tt s 
+    | TyQuant (Forall (l, tt)) -> 
+        t
+
 
 (*let rec mapFilter f l =
     match l with 
@@ -40,16 +54,7 @@ let rec apply_subst (t : ty) (s : subst) : ty =
         | Some _ -> x :: (mapFilter f xs)
 *)
 
-let rec freevars_ty (t : ty) : tyvar Set =
-    match t with
-    | TyName _ -> Set.empty
-    | TyArrow (t1, t2) -> Set.union (freevars_ty t1) (freevars_ty t2)
-    | TyVar tv -> Set.singleton tv
-    | TyTuple ts -> List.fold (fun set t -> Set.union set (freevars_ty t)) Set.empty ts
-    | TyQuant (Forall (l, t)) -> Set.ofList l
 
-let freevars_scheme (Forall (tvs, t)) =
-    Set.difference (freevars_ty t) (Set.ofList tvs)
 
 
 //Unification function (Martelli-Montanari)
@@ -127,6 +132,13 @@ let next_tyvar env =
     | [] -> 1
     | _ -> List.max(res) + 1
 
+let rec freevars_env (env : ty env) = 
+    match env with
+    | [] -> Set.empty
+    | (s, v) :: xs -> 
+        match v with 
+        | TyQuant (Forall (l, ty)) -> Set.union (freevars_ty v) (freevars_env xs)
+        | _ -> freevars_env xs
 let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
     match e with
     //Literals are already type names
@@ -171,10 +183,13 @@ let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
             (apply_subst r composed_subst, composed_subst)
 
         //If t1 is unknown, we suppose that has type 'a -> 'b, and try to understand more about 'a and 'b from expression e2
-        | TyVar _ ->
+        | TyVar tt1 ->
             let t2, s2 = typeinfer_expr env e2
-            let n = next_tyvar env
-            let codomain = TyVar n //fresh type variable
+            let free_vars = Set.union (freevars_ty t2) (Set.singleton tt1)
+            let n = if Set.count free_vars > 0 then (Set.maxElement free_vars) + 1 else 1
+            let n1 = max (next_tyvar env) n
+            //let n = next_tyvar env
+            let codomain = TyVar n1 //fresh type variable
             let composed = compose_subst s1 s2 //compose substitutions from the expressions
             let arr = TyArrow (t2, codomain)
             let composed2 = compose_subst composed (unify t1 arr)
@@ -186,14 +201,18 @@ let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
             match ty with 
             | TyArrow (dom, cod) -> 
                 let t2, s2 = typeinfer_expr env e2
-                (
+
+                //let diff = freevars_scheme (Forall (l, ty))
+                let composed = (
                     try
-                        unify dom t2
+                        compose_subst ( compose_subst s1 s2 ) (unify dom t2)
                     with
                     | TypeError _ -> type_error "the domain of the function is %s, but got %s" (pretty_ty dom) (pretty_ty t2)
-                ) |> ignore
+                )
 
-                (t2, compose_subst s1 s2)
+                //let filtered = List.filter (fun (var, _) -> Set.contains var diff ) composed 
+
+                (apply_subst cod composed, composed)
             | _ -> type_error "expecting a function on left side of application, but got %s" (pretty_ty ty)
 
         | _ -> type_error "expecting a function on left side of application, but got %s" (pretty_ty t1)
@@ -214,15 +233,22 @@ let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
         (t2, compose_subst s s2)
 
     | LetRec (f, None, e1, e2) ->
+        //The unknown type before the inference of e1
         let n = next_tyvar env
-        let arr = TyArrow (TyVar n, TyVar (n + 1))
-        let free_vars = freevars_ty arr
-        let new_ty = (TyQuant (Forall (List.ofSeq free_vars, arr)))
-        let env0 = (f, new_ty) :: env
+        let pre_dom = TyVar n
+        let pre_cod = TyVar (n + 1)
+        let pre_arr = TyArrow (pre_dom, pre_cod)
+        let pre_free_vars = freevars_ty pre_arr
+        let pre_ty = (TyQuant (Forall (List.ofSeq pre_free_vars, pre_arr)))
+        let env0 = (f, pre_ty) :: env
         let t1, s = typeinfer_expr env0 e1
-        let composed = compose_subst s (unify new_ty t1)
-        let new_type = apply_subst new_ty composed
-        let t2, s2 = typeinfer_expr ((f, new_type)::env) e2
+        //New info after the type inference of the expression
+        let post_dom = apply_subst pre_dom s
+        let post_cod = apply_subst pre_cod s
+        let post_arr = TyArrow (post_dom, post_cod)
+        let post_free_vars = freevars_ty post_arr
+        let post_ty = (TyQuant (Forall (List.ofSeq post_free_vars, post_arr)))
+        let t2, s2 = typeinfer_expr ((f, post_ty)::env) e2
         (t2, compose_subst s s2)
 
     | LetRec (f, Some tf, e1, e2) ->
@@ -239,10 +265,12 @@ let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
     //the substitutions and use it to check if the following expressions are respecting the 
     //previous ones
     | Tuple tup ->
+        let f_env = freevars_env env
         //Function for the mapFold
         let mapAndFold acc elem = 
             let t, s = typeinfer_expr env elem
-            (t, compose_subst acc s)
+            let filtered = List.filter (fun (tvar, _) -> not (Set.contains tvar f_env) ) s
+            (t, compose_subst acc filtered)
 
         let expressions, composed_subst = List.mapFold mapAndFold [] tup
 
@@ -261,8 +289,8 @@ let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
         | Some e3 ->
             let t3, s3 = typeinfer_expr env e3
             let com = compose_subst composed s3
-            //if t2 <> t3 then type_error "type mismatch in if-then-else: then branch has type %s and is different from else branch type %s" (pretty_ty t2) (pretty_ty t3)
-            (t2, compose_subst com (unify t2 t3))
+            let com2 = compose_subst com (unify t2 t3)
+            (apply_subst t2 com2, com2)
 
     | BinOp (e1, ("+" | "-" | "/" | "%" | "*"  as op), e2) ->
         let t1, s1 = typeinfer_expr env e1
@@ -271,7 +299,7 @@ let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
             try
                 compose_subst (compose_subst s1 s2) (unify t1 t2)
             with
-            | TypeError _ -> type_error "binary operator expects operands with same type name, but got %s %s %s" (pretty_ty t1) op (pretty_ty t2)
+            | TypeError _ -> type_error "binary operator expects two numeric types, but got %s and %s" (pretty_ty t1) (pretty_ty t2)
         )
         match t1, t2 with
         | TyInt, TyInt
@@ -292,7 +320,7 @@ let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
             try
                 compose_subst (compose_subst s1 s2) (unify t1 t2)
             with
-            | TypeError _ -> type_error "binary operator expects two bools operands, but got %s %s %s" (pretty_ty t1) op (pretty_ty t2)
+            | TypeError _ -> type_error "binary operator expects two numeric types, but got %s and %s" (pretty_ty t1)  (pretty_ty t2)
         )
         match t1, t2 with
         | TyInt, TyInt
@@ -310,19 +338,19 @@ let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
             try
                 compose_subst (compose_subst s1 s2) (unify t1 t2)
             with
-            | TypeError _ -> type_error "binary operator expects two bools operands, but got %s %s %s" (pretty_ty t1) op (pretty_ty t2)
+            | TypeError _ -> type_error "logical binary operator expects two bools operands, but got %s and %s" (pretty_ty t1) (pretty_ty t2)
         )
         match t1, t2 with
         | TyBool, TyBool 
         | TyBool, TyVar _
         | TyVar _, TyBool -> (TyBool, composed_subst)
-        | _ -> type_error "binary operator expects two bools operands, but got %s %s %s" (pretty_ty t1) op (pretty_ty t2)   
+        | _ -> type_error "binary operator expects two bools operands, but got %s and %s" (pretty_ty t1) (pretty_ty t2)   
     
     | BinOp (_, op, _) -> unexpected_error "unsupported binary operator (%s)" op
     
     | UnOp ("not", e) ->
         let t, s = typeinfer_expr env e
-        if t <> TyBool then type_error "unary not expects a bool operand, but got %s" (pretty_ty t)
+        if t <> TyBool then type_error "unary operator 'not' expects a bool operand, but got %s" (pretty_ty t)
         (TyBool, s)
                 
     | UnOp ("-", e) ->
@@ -330,12 +358,11 @@ let rec typeinfer_expr (env : ty env) (e : expr) : ty * subst =
         match t with
         | TyInt -> (TyInt, s)
         | TyFloat -> (TyFloat, s)
-        | _ -> type_error "unary negation expects a numeric operand, but got %s" (pretty_ty t)
+        | _ -> type_error "unary operator 'negation' expects a numeric operand, but got %s" (pretty_ty t)
     
     | UnOp (op, _) -> unexpected_error "unsupported unary operator (%s)" op
 
-    | _ -> failwith "not implemented"
-
+    | _ -> unexpected_error "typeinfer_expr: unsupported expression: %s [AST: %A]" (pretty_expr e) e
 
 // type checker
 //

@@ -13,6 +13,7 @@
 //let closure_tuple = fun x -> (x + 1, x and true, x + 2.0) in closure_tuple
 
 //let a = fun x -> if (x + 1) > 2 then x + 2.0 else x + 3.0 in a
+//let a = fun x -> if x > 2 then x else x in a;;
 
 //let rec a : int -> int = fun (x:int) -> if x = 0 then 0 else a (x - 1) in a 8
 
@@ -22,8 +23,14 @@
 
 //let a = fun (x : (int -> int)) -> fun y -> fun z -> x (y z) in a
 
+//fun x -> fun y -> fun z -> x (y z);;
+
 //let rec a = fun x -> if x <= 0 then 0 else a (x - 1) in a 8;;
 
 //fun x -> if true then (x, x, x) else (2, 2, 2);;
 
 //fun x -> fun y -> (x y, x 2);;
+
+//let a = (let b = fun x -> x + 4 in b) 6;;
+
+//let v2 = (let n = fun x -> x in n) (let n = 7 in n - 1);;
